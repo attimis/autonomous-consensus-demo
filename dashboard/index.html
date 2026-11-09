@@ -1,0 +1,703 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Consensus Control Room</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,600..800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a broadcast-style "desk" (the CIO's soundbite as a lower-third, with the live house view) leads;
+   below it the newsroom wall of ten desks, then the story of the house view. Plumbing (routing, call feed) is folded away.
+   Security only appears when it happens: a one-time "breaking" interruption, then one quiet incident line. */
+:root{
+  --bg:#f2f0ec; --panel:#ffffff; --fg:#1b1f24; --muted:#5e646c; --line:#dcd8d0;
+  --slab:#16263a; --slab-fg:#f4f1ea; --accent:#c8742c; --accent-soft:#f6e7d8;
+  --up:#2f7a55; --down:#a3483c; --flat:#7a7f87; --alarm:#b8322a; --alarm-soft:#f8e1dd;
+  --display:"Archivo","Helvetica Neue",Arial,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#101419; --panel:#171d24; --fg:#e8e6e1; --muted:#9aa1aa; --line:#29313b;
+  --slab:#0b1520; --slab-fg:#f4f1ea; --accent:#e0914a; --accent-soft:#3a2818;
+  --up:#62b98b; --down:#e07a6c; --flat:#9aa1aa; --alarm:#ef6a5a; --alarm-soft:#3a1d1a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#101419; --panel:#171d24; --fg:#e8e6e1; --muted:#9aa1aa; --line:#29313b;
+  --slab:#0b1520; --slab-fg:#f4f1ea; --accent:#e0914a; --accent-soft:#3a2818;
+  --up:#62b98b; --down:#e07a6c; --flat:#9aa1aa; --alarm:#ef6a5a; --alarm-soft:#3a1d1a; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--fg);font:15px/1.5 var(--body);padding-inline:16px;padding-block:18px 48px}
+.wrap{max-width:1280px;margin:0 auto;display:grid;gap:18px}
+h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance}
+h2{font-size:.76rem;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);font-weight:700}
+p{margin:0}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.topbar{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:end;justify-content:space-between}
+.brand{display:grid;gap:2px}
+.brand h1{font-size:1.25rem;font-weight:800;font-stretch:85%;letter-spacing:.02em}
+.brand p{color:var(--muted);font-size:.85rem;max-width:62ch}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:end}
+label.fld{display:flex;flex-direction:column;gap:2px;font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+input{font:13px var(--mono);padding:6px 8px;border:1px solid var(--line);border-radius:5px;background:var(--panel);color:var(--fg);max-width:100%}
+#run{width:13rem} #baseline{width:11rem}
+button{font:600 13px var(--body);padding:7px 12px;border-radius:5px;border:1px solid var(--line);background:var(--panel);color:var(--fg);cursor:pointer}
+button.primary{background:var(--slab);border-color:var(--slab);color:var(--slab-fg)}
+button:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.status{font-size:.82rem;color:var(--muted)}
+.status.err{color:var(--alarm)}
+.runs{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:.8rem}
+.runs button{font:500 12px var(--mono);padding:3px 8px}
+.runs button.on{border-color:var(--accent);color:var(--accent)}
+.tag{font:700 10px var(--body);font-style:normal;text-transform:uppercase;letter-spacing:.06em;margin-left:6px;padding:1px 5px;border-radius:3px;background:var(--accent-soft);color:var(--accent)}
+
+/* ---- The desk: the CIO's soundbite as a broadcast lower-third ---- */
+.studio{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,19rem);gap:0;border-radius:10px;overflow:hidden;background:var(--slab);color:var(--slab-fg)}
+@media (max-width:860px){.studio{grid-template-columns:minmax(0,1fr)}}
+.third{padding:22px 24px 20px;display:grid;gap:10px;align-content:start;min-width:0}
+.bug{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font:600 .74rem var(--mono);letter-spacing:.08em;text-transform:uppercase}
+.live{background:var(--accent);color:var(--slab);padding:2px 8px;border-radius:3px;font-weight:700}
+.live.done{background:var(--slab-fg)}
+@media (prefers-reduced-motion:no-preference){.live.on::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--slab);margin-right:6px;vertical-align:1px;animation:blink 1.4s steps(2,start) infinite}}
+@keyframes blink{to{visibility:hidden}}
+.bug .sep{opacity:.5}
+.third h3{font:800 clamp(1.5rem,3.4vw,2.6rem)/1.08 var(--display);font-stretch:80%;letter-spacing:.005em;max-width:24ch}
+.third p.take{font-size:clamp(1rem,1.5vw,1.18rem);line-height:1.5;max-width:62ch;opacity:.92}
+.third .byline{font-size:.78rem;opacity:.7}
+.houseview{background:rgba(255,255,255,.06);border-left:1px solid rgba(255,255,255,.12);padding:20px 22px;display:grid;gap:12px;align-content:start}
+@media (max-width:860px){.houseview{border-left:0;border-top:1px solid rgba(255,255,255,.12)}}
+.houseview h2{color:var(--slab-fg);opacity:.75}
+.macro{display:grid;gap:8px}
+.mrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:baseline;border-bottom:1px solid rgba(255,255,255,.1);padding-bottom:6px}
+.mrow span{font-size:.82rem;opacity:.8}
+.mrow b{font:600 1.5rem var(--mono);font-variant-numeric:tabular-nums}
+.mrow i{font:normal .72rem var(--mono);opacity:.65;grid-column:1 / -1}
+.ticker{grid-column:1 / -1;background:var(--accent);color:var(--slab);font:600 .84rem var(--body);overflow:hidden;white-space:nowrap;position:relative}
+.ticker .label{position:absolute;left:0;top:0;bottom:0;background:var(--slab-fg);color:var(--slab);padding:7px 12px;font:800 .74rem var(--display);letter-spacing:.1em;text-transform:uppercase;z-index:1;display:flex;align-items:center}
+.ticker .run{display:inline-block;padding:7px 0 7px 100%}
+@media (prefers-reduced-motion:no-preference){.ticker .run{animation:crawl var(--crawl,40s) linear infinite}}
+@media (prefers-reduced-motion:reduce){.ticker .run{padding-left:7.5rem;white-space:normal}}
+@keyframes crawl{to{transform:translateX(-100%)}}
+.ticker .item{margin-right:2.2rem}
+
+/* ---- incident: quiet line in the studio, plus a one-time interruption ---- */
+.incident{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;border:1px solid var(--alarm);background:var(--alarm-soft);color:var(--alarm);border-radius:8px;padding:8px 14px;font-size:.88rem}
+.incident b{font-family:var(--display);letter-spacing:.04em}
+.incident.calm{border-color:var(--line);background:var(--panel);color:var(--muted)}
+.breaking{position:fixed;inset:auto 16px calc(16px + env(safe-area-inset-bottom,0px)) 16px;margin:0 auto;max-width:720px;z-index:20;background:var(--panel);color:var(--fg);border-radius:10px;border:2px solid var(--alarm);box-shadow:0 18px 48px rgba(0,0,0,.28);overflow:hidden}
+.breaking .hd{background:var(--alarm);color:#fff;padding:8px 16px;font:800 .78rem var(--display);letter-spacing:.14em;text-transform:uppercase}
+.breaking .bd{padding:14px 16px;display:grid;gap:8px}
+.breaking .bd b{font:800 clamp(1.15rem,2.6vw,1.6rem)/1.15 var(--display);font-stretch:85%;color:var(--alarm)}
+.breaking .bd .row{display:flex;justify-content:flex-end}
+@media (prefers-reduced-motion:no-preference){.breaking:not([hidden]){animation:rise .35s ease-out}}
+@keyframes rise{from{transform:translateY(30px);opacity:0}}
+
+/* ---- progress strip ---- */
+.strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.cell{background:var(--panel);padding:10px 14px;display:grid;gap:1px;min-width:0}
+.cell span{color:var(--muted);font-size:.74rem;text-transform:uppercase;letter-spacing:.06em}
+.cell b{font:500 1.35rem var(--mono);font-variant-numeric:tabular-nums}
+.cell small{color:var(--muted);font-size:.78rem}
+
+/* ---- newsroom wall ---- */
+.wall{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
+.desk{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px;display:grid;gap:7px;min-width:0;align-content:start}
+.desk.fresh{border-color:var(--accent)}
+.desk.rogue{border:2px solid var(--alarm);background:var(--alarm-soft)}
+.desk.dark{opacity:.62}
+.desk .hd{display:flex;justify-content:space-between;align-items:baseline;gap:6px}
+.desk .hd strong{font:700 1rem var(--display);font-stretch:90%}
+.desk .hd .mono{font-size:.72rem;color:var(--muted)}
+.call{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.stance{font:700 .78rem var(--mono);letter-spacing:.04em;text-transform:uppercase;padding:2px 7px;border-radius:4px;border:1px solid currentColor}
+.stance.overweight{color:var(--up)} .stance.underweight{color:var(--down)} .stance.neutral{color:var(--flat)}
+.conv{font-size:.8rem;color:var(--muted)}
+.desk p.change{font-size:.86rem;line-height:1.4}
+.path{display:flex;flex-wrap:wrap;gap:4px;font:500 11px var(--mono);color:var(--muted)}
+.path b{font-weight:600;color:var(--fg)}
+.desk .note{font-size:.76rem;color:var(--muted)}
+.ask{border-top:1px dashed var(--line);padding-top:6px;display:grid;gap:3px;font-size:.82rem}
+.ask b{font:700 .68rem var(--body);text-transform:uppercase;letter-spacing:.08em;color:var(--accent)}
+.ask .ans{color:var(--muted);font-style:italic}
+.board{display:grid;gap:6px}
+.brow{display:grid;grid-template-columns:1.6rem minmax(0,1fr) auto;gap:8px;align-items:center}
+.brow .bar{height:8px;border-radius:4px;background:var(--accent)}
+.brow .rank{font:700 .9rem var(--mono);color:var(--muted)}
+.brow.out{opacity:.5;text-decoration:line-through}
+.desk .flag{font:700 .72rem var(--body);color:var(--alarm);text-transform:uppercase;letter-spacing:.06em}
+
+.cols{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:18px}
+@media (max-width:900px){.cols{grid-template-columns:minmax(0,1fr)}}
+section.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;display:grid;gap:12px;min-width:0;align-content:start}
+.evo-r{display:grid;grid-template-columns:5.2rem minmax(0,1fr);gap:14px;border-top:1px solid var(--line);padding-block:12px}
+.evo-r:first-child{border-top:0;padding-top:0}
+@media (max-width:560px){.evo-r{grid-template-columns:minmax(0,1fr);gap:4px}}
+.evo-r .when{font:700 .9rem var(--display)}
+.evo-r blockquote{margin:0;font-size:1rem;max-width:70ch}
+.evo-r ul{margin:6px 0 0;padding-left:18px;display:grid;gap:4px;font-size:.88rem}
+.round{display:grid;gap:3px;border-top:1px solid var(--line);padding-top:8px}
+.round:first-child{border-top:0;padding-top:0}
+.round .top{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.kv{display:flex;flex-wrap:wrap;gap:10px;font:12px var(--mono);color:var(--muted)}
+.pill{display:inline-block;font:600 .68rem var(--mono);padding:1px 7px;border-radius:999px;border:1px solid currentColor;letter-spacing:.04em;text-transform:uppercase}
+.pill.CONVERGED{color:var(--up)} .pill.CONVERGING{color:var(--accent)} .pill.CAPPED,.pill.WAITING{color:var(--flat)}
+.empty{color:var(--muted);font-size:.86rem}
+
+/* ---- under the hood ---- */
+details.hood{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 16px}
+details.hood summary{cursor:pointer;font:700 .8rem var(--display);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.hoodgrid{display:grid;gap:16px;margin-top:12px}
+.scroll{overflow-x:auto}
+table.heat{border-collapse:separate;border-spacing:3px;font:12px var(--mono)}
+table.heat th{font-weight:500;color:var(--muted);padding:2px 4px;white-space:nowrap;text-align:left}
+table.heat thead th{writing-mode:vertical-rl;transform:rotate(180deg);height:110px}
+table.heat td{min-width:30px;height:26px;text-align:center;border-radius:4px;border:1px solid var(--line)}
+table.heat td.forged{border:2px solid var(--alarm);background:var(--alarm-soft)!important;color:var(--alarm);font-weight:600}
+.feed{max-height:320px;overflow:auto;border-top:1px solid var(--line)}
+.ev{display:grid;grid-template-columns:4.6rem 5.4rem 7.5rem minmax(0,1fr) 3rem;gap:8px;padding:4px 2px;border-bottom:1px solid var(--line);font:12px var(--mono);align-items:baseline}
+.ev .k{overflow-wrap:anywhere;color:var(--muted)}
+.ev .rt{grid-column:4 / -1;font-size:11px;color:var(--muted)}
+@media (max-width:640px){.ev{grid-template-columns:4.2rem minmax(0,1fr) 2.6rem}.ev .op,.ev .who{display:none}.ev .rt{grid-column:2 / -1}}
+.hood pre{border:1px solid var(--line);border-radius:6px;padding:10px;font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere;max-height:220px;overflow:auto;margin:0}
+.hood p.note{color:var(--muted);font-size:.8rem}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="topbar">
+    <div class="brand">
+      <h1>Consensus Control Room</h1>
+      <p>Ten analyst desks and a CIO, each working only in its own storage, reach one house view while OneBucket policy carries the reports between them.</p>
+    </div>
+    <div class="controls">
+      <label class="fld" for="baseline">Baseline to beat<input id="baseline" type="text" value="1-week IC cycle" spellcheck="false"></label>
+      <label class="fld" for="run">Run<input id="run" type="text" value="" placeholder="follows the current run" spellcheck="false"></label>
+      <button id="connect" class="primary" type="button">Follow live</button>
+      <button id="stop" type="button" hidden>Stop</button>
+    </div>
+  </div>
+  <p id="status" class="status">Showing an illustrative example (invented). Open this page in claude.ai with the OneBucket data and events connectors to follow a real run.</p>
+  <div id="runs" class="runs" hidden></div>
+
+  <!-- The desk -->
+  <section class="studio" aria-labelledby="soundbite">
+    <div class="third">
+      <div class="bug"><span id="liveTag" class="live on">Live</span><span id="bugRound">Round –</span><span class="sep">·</span><span id="bugClock" class="mono">00:00</span><span class="sep">·</span><span id="bugDesks">0 of 10 desks filed</span></div>
+      <h3 id="soundbite">The committee is gathering</h3>
+      <p class="take" id="take">The CIO posts a short read on the room when each round closes and again when it publishes.</p>
+      <p class="byline" id="byline">The CIO's desk take</p>
+    </div>
+    <aside class="houseview" aria-labelledby="hHouse">
+      <h2 id="hHouse">House view now</h2>
+      <div class="macro" id="macro"></div>
+    </aside>
+    <div class="ticker" aria-label="Latest from the desks"><span class="label">Desks</span><span class="run" id="ticker"></span></div>
+  </section>
+
+  <div id="incident" class="incident" hidden></div>
+
+  <div class="strip">
+    <div class="cell"><span>Time to consensus</span><b id="sTime">–</b><small id="sBase"></small></div>
+    <div class="cell"><span>Rounds</span><b id="sRound">–</b><small id="sStatus"></small></div>
+    <div class="cell"><span>Still in dispute</span><b id="sOpen">–</b><small>open contradictions</small></div>
+    <div class="cell"><span>Minds changed</span><b id="sStance">–</b><small>stance changes so far</small></div>
+    <div class="cell"><span>Reports filed</span><b id="sFiled">–</b><small id="sFiledSub"></small></div>
+  </div>
+
+  <section aria-labelledby="hWall" style="display:grid;gap:10px">
+    <h2 id="hWall">The desks</h2>
+    <div class="wall" id="wall"></div>
+  </section>
+
+  <div class="cols">
+    <section class="panel" aria-labelledby="hEvo">
+      <h2 id="hEvo">How the house view evolved</h2>
+      <div id="evo"></div>
+    </section>
+    <div style="display:grid;gap:18px;align-content:start;min-width:0">
+      <section class="panel" aria-labelledby="hBoard">
+        <h2 id="hBoard">Influence on the CIO</h2>
+        <div class="board" id="board"></div>
+      </section>
+      <section class="panel" aria-labelledby="hRounds">
+        <h2 id="hRounds">Rounds</h2>
+        <div id="rail"></div>
+      </section>
+    </div>
+  </div>
+
+  <details class="hood" id="hood">
+    <summary>Under the hood: how policy routed every call</summary>
+    <div class="hoodgrid">
+      <div>
+        <h2>Whose bucket was used → whose storage answered</h2>
+        <div class="scroll"><table class="heat" id="heat"></table></div>
+        <p class="note">Each agent touches only its own bucket. Read-only policy peers decide whose storage answers. A red cell is a desk's thesis answered from another desk's storage.</p>
+      </div>
+      <div>
+        <h2>Call feed</h2>
+        <div class="feed" id="feed"></div>
+        <p class="note">From the platform's event log (the events connector). One row per request; the second line shows each storage it reached. This page's own reads are left out.</p>
+      </div>
+      <div>
+        <h2>Connection</h2>
+        <div class="controls" style="margin-bottom:8px">
+          <label class="fld" for="epData">Data connector<input id="epData" type="text" spellcheck="false" style="width:16rem"></label>
+          <label class="fld" for="epEvents">Events connector<input id="epEvents" type="text" spellcheck="false" style="width:16rem"></label>
+          <button id="epSave" type="button">Save and reload</button>
+        </div>
+        <p class="note">Hostnames of the two OneBucket connectors, exactly as they are named in claude.ai. Global by default; regional clusters are listed at onebucket.io/support. Kept in this browser only.</p>
+        <pre id="diagText" class="mono">Not connected yet.</pre>
+      </div>
+    </div>
+  </details>
+</div>
+
+<div class="breaking" id="breaking" hidden role="alertdialog" aria-labelledby="brHead">
+  <div class="hd">Breaking</div>
+  <div class="bd">
+    <b id="brHead">CRITICAL ALERT: IDENTITY SPOOFING DETECTED</b>
+    <p id="brText"></p>
+    <div class="row"><button id="brClose" type="button">Keep watching</button></div>
+  </div>
+</div>
+
+<script>
+/* How this page works
+   ------------------
+   Sources (both through the viewer's own claude.ai connectors, via window.claude.use("mcp")):
+     1. The CIO's bucket `cio-data-rw` (DATA): `cio/current_run.json` says which run is current; under `cio/<RUN>/` the
+        round documents, `evolution.json`, `desk.json` and `CONVERGED.md`; under `user-NN/<RUN>/` every desk's theses,
+        visible here because policy merges the ten desk buckets into the CIO's view. Polled every 8 s (pollData).
+     2. The platform event log (EVENTS, the events connector): history from the run's `started_at` (list_events), then a long-poll tail
+        (tail_events). Events are grouped by request id into one gateway event plus its backend events (ingest), and
+        everything the page itself read is left out of the counts (isSelf).
+   State lives in S; derive() turns the events into routing, spoofing and cut-off facts; render() paints everything.
+   Until a connector answers, example() shows an invented run so the layout can be previewed from a plain file.
+   Nothing here is written back to the bucket; the page is read-only.
+   Endpoints: the global OneBucket hostnames by default. A regional cluster uses data.<region>.onebucket.io and
+   events.<region>.onebucket.io (the list is at https://www.onebucket.io/support). Override them under "Under the hood →
+   Connection"; the choice is kept in this browser. The connector display names in claude.ai must match (a custom connector
+   added by URL is named by its hostname), and the artifact must be published with the mcp capability for the same two names.
+   Bucket-naming constants follow; change them if your buckets are named differently. */
+(function(){
+const DEFAULT_DATA = "data.onebucket.io", DEFAULT_EVENTS = "events.onebucket.io";
+let DATA = DEFAULT_DATA, EVENTS = DEFAULT_EVENTS;
+try{ DATA = localStorage.getItem("ccr.data") || DATA; EVENTS = localStorage.getItem("ccr.events") || EVENTS; }catch(e){}
+const SEATS = Array.from({length:10},(_,i)=>String(i+1).padStart(2,"0"));
+const SECTORS = {"01":"Technology","02":"Healthcare","03":"Financials","04":"Energy","05":"Consumer Discretionary","06":"Consumer Staples","07":"Industrials","08":"Real Estate","09":"Utilities","10":"Materials"};
+const AGENTS = ["cio-data-rw", ...SEATS.map(s=>"user-"+s)];
+const STORES = ["onebucket-demo-cio", ...SEATS.map(s=>"onebucket-demo-user-"+s)];
+const MACRO = [["Rate cuts (12m)",/cut/i],["Core inflation",/infl|core/i],["Recession odds",/recess/i],["GDP",/gdp/i]];
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmtClock = ms => { if(!(ms>0)) return "00:00"; const t=Math.floor(ms/1000), h=Math.floor(t/3600), m=Math.floor(t%3600/60), s=t%60; return (h? h+":"+String(m).padStart(2,"0") : String(m).padStart(2,"0"))+":"+String(s).padStart(2,"0"); };
+const hhmmss = iso => { const d=new Date(iso); return isNaN(d)? "" : d.toISOString().slice(11,19); };
+const seatOf = b => { const m=/^user-(\d\d)$/.exec(b||""); return m? m[1] : null; };
+const storeSeat = b => { const m=/^onebucket-demo-user-(\d\d)$/.exec(b||""); return m? m[1] : (b==="onebucket-demo-cio"? "cio" : null); };
+const shortStore = b => b==="onebucket-demo-cio" ? "CIO" : (storeSeat(b) ? "desk "+storeSeat(b) : (b||"—"));
+const agentLabel = b => b==="cio-data-rw" ? "CIO" : (seatOf(b) ? "desk "+seatOf(b) : (b||"—"));
+const listOf = v => String(v||"").replace(/^\[|\]$/g,"").split(",").map(x=>x.trim()).filter(Boolean);
+const abbr = s => ({overweight:"OW",underweight:"UW",neutral:"N"})[String(s||"").toLowerCase()] || (s||"?");
+
+const S = {run:"", pinned:false, manual:false, pointer:null, runList:[], knownRuns:null, newRuns:new Set(),
+  rounds:new Map(), roundBodies:new Map(), desk:null, evolution:[], converged:false, convergedAt:null,
+  theses:{}, events:new Map(), reqs:new Map(), cursor:null, since:null, example:true, breakingShown:false, containedShown:false, gen:0};
+const D = {dataOk:0, dataFail:0, synOk:0, synFail:0, polls:0, lastErrors:[], selfCalls:[]};
+let mcp=null, dataTimer=null, dataBusy=false, renderQueued=false;
+
+function noteErr(where,e){ const t=(e&&(e.message||e.code))? (e.code?"["+e.code+"] ":"")+(e.message||"") : String(e); D.lastErrors.unshift(new Date().toISOString().slice(11,19)+" "+where+": "+t); D.lastErrors=D.lastErrors.slice(0,8); }
+function unwrap(res){
+  let p = res && ("payload" in res) ? res.payload : res;
+  if(p && p.structuredContent) p = p.structuredContent;
+  if(p && Array.isArray(p.content)){ const t=p.content.find(c=>c.type==="text"); if(t) p=t.text; }
+  if(typeof p==="string"){ try{ p=JSON.parse(p); }catch(e){} }
+  return p;
+}
+/* The page's own data calls are recorded so their platform events stay out of the counts. */
+const ACT = {list:"s3:ListObjectsV2", get:"s3:GetObject", head:"s3:HeadObject"};
+async function data(tool,input){
+  const rec={action:ACT[tool], bucket:input.bucket, key:input.key||null, t0:Date.now(), t1:null};
+  D.selfCalls.push(rec); if(D.selfCalls.length>600) D.selfCalls.shift();
+  try{ const r=unwrap(await mcp.callTool(DATA,tool,input)); D.dataOk++; return r; }
+  catch(e){ D.dataFail++; throw e; }
+  finally{ rec.t1=Date.now(); }
+}
+async function syn(tool,input){
+  try{ const r=unwrap(await mcp.callTool(EVENTS,tool,input)); D.synOk++; return r; }
+  catch(e){ D.synFail++; throw e; }
+}
+function isSelf(gw){
+  const t=Date.parse(gw.time); if(isNaN(t)) return false;
+  for(let i=D.selfCalls.length-1;i>=0;i--){ const c=D.selfCalls[i];
+    if(c.action===gw.action && c.bucket===gw.bucket && (c.key||null)===(gw.key||null) && t>=c.t0-3000 && t<=(c.t1||Date.now())+3000) return true; }
+  return false;
+}
+async function getText(bucket,key){ const g=await data("get",{bucket,key}); return typeof g==="string"? g : (g && typeof g.content==="string"? g.content : JSON.stringify(g)); }
+async function getJSON(bucket,key){ return JSON.parse(await getText(bucket,key)); }
+
+function parseHeader(md){
+  const m=/^---\s*\n([\s\S]*?)\n---/.exec(md||""); const o={};
+  if(!m) return o;
+  for(const line of m[1].split("\n")){ const k=/^([a-z_]+):\s*(.*)$/.exec(line.trim()); if(k) o[k[1]]=k[2].replace(/\s+#.*$/,"").replace(/^"|"$/g,""); }
+  return o;
+}
+/* House macro from the round document's table: the last cell of each row whose label names a variable. */
+function parseMacro(md){
+  const out={};
+  for(const line of String(md||"").split("\n")){
+    if(!/^\s*\|/.test(line)) continue;
+    const cells=line.split("|").map(c=>c.trim()).filter((c,i,a)=>!(i===0&&c==="")&&!(i===a.length-1&&c===""));
+    if(cells.length<2 || /^-+$/.test(cells[0].replace(/[:\s]/g,""))) continue;
+    for(const [name,re] of MACRO){ if(re.test(cells[0]) && !out[name]) out[name]=cells[cells.length-1].replace(/\*/g,""); }
+  }
+  return out;
+}
+
+/* ---------- derive from the platform's event log ---------- */
+function derive(){
+  const out={calls:0, bytes:0, matrix:{}, forgedCells:{}, feed:[], spoofBy:{}, victims:new Set(), sees:{}, heard:{}, mode:{}, cioKey:null, firstSpoof:null};
+  const reqs=[...S.reqs.values()].filter(r=>r.gw).sort((a,b)=>a.gw.time<b.gw.time?-1:1);
+  for(const r of reqs){ const g=r.gw; if(g.bucket==="cio-data-rw" && g.accessKey && /PutObject/.test(g.action)){ out.cioKey=g.accessKey; break; } }
+  for(const r of reqs){
+    const g=r.gw, act=(g.action||"").replace(/^s3:/,""), key=g.key||"", t=g.time;
+    if(key && /(^|\/)runs\//.test(key) && S.run && !key.includes(S.run)) continue;
+    const self=isSelf(g), served=r.be.filter(b=>b.statusCode<400);
+    if(g.bucket==="cio-data-rw" && act==="ListObjectsV2" && r.be.length){
+      const reached=new Set(r.be.map(b=>storeSeat(b.bucket)));
+      for(const s of SEATS) out.heard[s]={ok:reached.has(s), t};
+    }
+    if(self) continue;
+    out.calls++; out.bytes+=(g.bytes&&((g.bytes.in||0)+(g.bytes.out||0)))||0;
+    const agent=g.bucket||"—", seat=seatOf(agent);
+    if(seat && g.accessKey) out.mode[seat] = out.cioKey && g.accessKey===out.cioKey ? "simulated" : "live";
+    for(const b of served){ const k=agent+"|"+b.bucket; out.matrix[k]=(out.matrix[k]||0)+1; }
+    const fm=/^user-(\d\d)\//.exec(key);
+    if(seat && act==="PutObject" && g.statusCode<400 && fm && fm[1]!==seat){
+      out.spoofBy[seat]=(out.spoofBy[seat]||0)+1; out.victims.add(fm[1]); if(!out.firstSpoof) out.firstSpoof=t;
+    }
+    if(agent==="cio-data-rw" && fm && /GetObject|HeadObject/.test(act)){
+      for(const b of served){ const ss=storeSeat(b.bucket); if(ss && ss!=="cio" && ss!==fm[1]) out.forgedCells[agent+"|"+b.bucket]=true; }
+    }
+    if(seat && /GetObject|HeadObject|ListObjectsV2/.test(act) && (act==="ListObjectsV2" || key.startsWith("cio/")) && r.be.length){
+      out.sees[seat]={ok:r.be.some(b=>b.bucket==="onebucket-demo-cio"), t};
+    }
+    out.feed.push(r);
+  }
+  return out;
+}
+
+/* ---------- render ---------- */
+function queueRender(){ if(renderQueued) return; renderQueued=true; requestAnimationFrame(()=>{ renderQueued=false; render(); }); }
+function render(){
+  const d=derive();
+  const rs=[...S.rounds.values()].sort((a,b)=>a.round-b.round), last=rs[rs.length-1];
+  const desk=S.desk, p=S.pointer||{};
+  const live=new Set((p.live_seats||[]).map(String)), sim=new Set((p.sim_seats||[]).map(String));
+  /* incident state (emergent) */
+  const spoofers=Object.keys(d.spoofBy);
+  const victims=new Set([...d.victims, ...(last? listOf(last.impersonated).map(x=>x.replace(/^user-/,"")) : [])]);
+  const attack = spoofers.length>0 || (desk && desk.phase==="alert") || victims.size>0;
+  const contained = attack && spoofers.length>0 && spoofers.every(s=>d.heard[s] && !d.heard[s].ok);
+  const cutOff = SEATS.filter(s=>(d.sees[s]&&!d.sees[s].ok)||(d.heard[s]&&!d.heard[s].ok));
+
+  /* the desk: soundbite */
+  const latestRound = last? last.round : (p.round||0);
+  const filed = SEATS.filter(s=>S.theses[s]).length;
+  const roundNow = desk&&desk.round ? desk.round : latestRound;
+  $("bugRound").textContent = roundNow? "Round "+roundNow : "Round 1";
+  $("bugDesks").textContent = filed+" of "+(p.expected||10)+" desks filed";
+  const start = p.started_at ? Date.parse(p.started_at) : (S.since? Date.parse(S.since) : NaN);
+  const end = S.convergedAt || Date.now();
+  $("bugClock").textContent = isNaN(start)? "00:00" : fmtClock(end-start);
+  $("liveTag").textContent = S.converged? "Final" : (S.example? "Example" : "Live");
+  $("liveTag").className = "live"+(S.converged? " done" : (S.example? "" : " on"));
+  if(desk && desk.headline){ $("soundbite").textContent=desk.headline; $("take").textContent=desk.take||""; $("byline").textContent="The CIO's desk take"+(desk.updated_at? " · "+hhmmss(desk.updated_at)+" UTC":""); }
+  /* house view numbers, with how each moved since the previous round */
+  const cur = last? (S.roundBodies.get(last.round)||{}) : {};
+  const prev = rs.length>1? (S.roundBodies.get(rs[rs.length-2].round)||{}) : {};
+  const rows = MACRO.filter(([n])=>n!=="GDP" || cur[n]);
+  $("macro").innerHTML = rows.map(([n])=>{
+    const v=cur[n], pv=prev[n];
+    return '<div class="mrow"><span>'+esc(n)+'</span><b>'+esc(v||"–")+'</b>'+(pv&&v&&pv!==v? '<i>was '+esc(pv)+' last round</i>' : (v&&rs.length>1? '<i>unchanged</i>' : ''))+'</div>';
+  }).join("") + '<p class="empty" style="color:inherit;opacity:.7;font-size:.8rem">'+(last? esc(last.status==="CONVERGED"? "Consensus reached." : (last.rationale||"")) : "Set when the CIO publishes round 1.")+'</p>';
+  /* ticker: what each desk just said */
+  const items = SEATS.filter(s=>S.theses[s]).map(s=>{ const t=S.theses[s];
+    return '<span class="item"><b>'+esc(SECTORS[s])+'</b> '+esc(abbr(t.stance))+' · '+esc(t.conviction||"")+(t.change&&!/^(n\/a|none)$/i.test(t.change)? ' · '+esc(t.change) : '')+'</span>'; });
+  const evoLast = S.evolution.length? S.evolution[S.evolution.length-1] : null;
+  if(evoLast) (evoLast.changes||[]).forEach(c=>items.unshift('<span class="item"><b>House</b> '+esc(c.what)+'</span>'));
+  const tick = items.join("") || '<span class="item">Desks file their opening theses in round 1.</span>';
+  if($("ticker").dataset.k!==tick){ $("ticker").innerHTML=tick; $("ticker").dataset.k=tick; $("ticker").style.setProperty("--crawl", Math.max(30, items.length*7)+"s"); }
+
+  /* incident: one-time interruption, then one quiet line */
+  if(attack && !S.breakingShown){ S.breakingShown=true; $("brHead").textContent="CRITICAL ALERT: IDENTITY SPOOFING DETECTED";
+    $("brText").textContent = spoofers.length? "Desk "+spoofers.join(", ")+" ("+spoofers.map(s=>SECTORS[s]).join(", ")+") is filing reports in "+victims.size+" other desks' names. Policy is carrying them straight into the CIO's view." : "The CIO sees the same report held in two desks' storage.";
+    $("breaking").hidden=false; }
+  if(contained && !S.containedShown){ S.containedShown=true; $("brHead").textContent="Contained";
+    $("brText").textContent="Desk "+spoofers.join(", ")+" is cut off. Its forged reports have left the CIO's view, and the committee carries on with the honest desks."; $("breaking").hidden=false; }
+  const inc=$("incident");
+  if(attack){ inc.hidden=false; inc.className="incident"+(contained?" calm":"");
+    inc.innerHTML = contained
+      ? '<b>Incident contained</b><span>Desk '+esc(spoofers.join(", "))+' cut off'+(d.firstSpoof? ' · first forged report '+esc(hhmmss(d.firstSpoof))+' UTC':'')+'. The house is re-anchoring on clean reports.</span>'
+      : '<b>Identity spoofing in progress</b><span>Desk '+esc(spoofers.join(", ")||"?")+' is filing in '+victims.size+' other desks\' names.</span>';
+  } else inc.hidden=true;
+
+  /* progress strip */
+  $("sTime").textContent = isNaN(start)? "–" : fmtClock(end-start);
+  $("sBase").textContent = (S.converged? "reached, vs " : "so far, vs ")+($("baseline").value||"baseline");
+  $("sRound").textContent = latestRound||"–";
+  $("sStatus").innerHTML = last? '<span class="pill '+esc(last.status)+'">'+esc(last.status)+'</span>' : (p.status? '<span class="pill '+esc(p.status)+'">'+esc(p.status)+'</span>' : "");
+  $("sOpen").textContent = last? (last.open_contradictions??"–") : "–";
+  $("sStance").textContent = rs.reduce((n,r)=>n+(+r.stance_changes||0),0);
+  $("sFiled").textContent = Object.values(S.theses).reduce((n,t)=>n+t.history.length,0);
+  $("sFiledSub").textContent = filed+" desks reporting";
+
+  /* newsroom wall */
+  $("wall").innerHTML = SEATS.map(s=>{
+    const t=S.theses[s], rogue=!!d.spoofBy[s], victim=victims.has(s)&&!rogue, isCut=cutOff.includes(s);
+    const mode = live.has(s)? "live" : sim.has(s)? "simulated" : (d.mode[s]||"");
+    const fresh = t && last && +t.round===latestRound+1;
+    const path = t? t.history.map((h,i)=>(i?' → ':'')+'<b>'+esc(abbr(h.stance))+'</b>·'+esc(h.conviction||"")).join("") : "";
+    return '<article class="desk'+(rogue?" rogue":"")+(isCut&&!rogue?" dark":"")+(fresh?" fresh":"")+'"><div class="hd"><strong>'+esc(SECTORS[s])+'</strong><span class="mono">desk '+s+(mode?' · '+mode:'')+'</span></div>'+
+      (t? '<div class="call"><span class="stance '+esc(String(t.stance||"").toLowerCase())+'">'+esc(t.stance||"?")+'</span><span class="conv">'+esc(t.conviction||"")+' conviction · r'+esc(String(t.round).padStart(2,"0"))+'</span></div>'+
+          '<p class="change">'+esc(t.change && /^none\b/i.test(t.change.trim()) ? "No change this round." : (t.change && !/^n\/a\b/i.test(t.change.trim()) ? t.change : (t.top_risk? "Top risk: "+t.top_risk : "Opening thesis filed.")))+'</p>'+
+          (t.history.length>1? '<div class="path">'+path+'</div>' : '')
+        : '<p class="note">No report filed yet.</p>')+
+      (t && t.answers ? '<div class="ask"><b>The desk answered</b><span class="ans">'+esc(t.answers.length>180? t.answers.slice(0,177)+"…" : t.answers)+'</span></div>' : '')+
+      (rogue? '<span class="flag">Filing in other desks\' names</span>' : '')+
+      (victim? '<span class="note">Someone filed a report in this desk\'s name.</span>' : '')+
+      (isCut && !rogue? '<span class="note">Out of contact with the house.</span>' : '')+
+      (rogue && isCut? '<span class="note">Cut off by policy.</span>' : '')+
+      '</article>';
+  }).join("");
+
+  /* influence leaderboard: credits from evolution.json; forgers are out */
+  const credit={};
+  for(const e of (S.evolution||[])){
+    for(const c of (e.changes||[])) for(const a of (c.driven_by||[])){ const m=/(\d\d)/.exec(String(a)); if(m) credit[m[1]]=(credit[m[1]]||0)+1; }
+    for(const c of (e.credited_answers||[])){ const m=/(\d\d)/.exec(String(c.analyst||"")); if(m) credit[m[1]]=(credit[m[1]]||0)+1; }
+  }
+  const ranked=Object.keys(credit).sort((a,b)=>credit[b]-credit[a]||a.localeCompare(b));
+  const topN=Math.max(1,...Object.values(credit),0);
+  $("board").innerHTML = ranked.length? ranked.slice(0,6).map((k,i)=>{ const out=!!d.spoofBy[k];
+    return '<div class="brow'+(out?" out":"")+'"><span class="rank">'+(i+1)+'</span><div><div style="display:flex;justify-content:space-between;gap:6px;font-size:.88rem"><b>'+esc(SECTORS[k]||k)+'</b><span class="muted mono">'+credit[k]+(out?' · out':'')+'</span></div><div class="bar" style="width:'+Math.round(100*credit[k]/topN)+'%"></div></div><span></span></div>'; }).join("")
+    : '<p class="empty">The desk whose answers move the CIO most wins. Credits appear here as the CIO names the desks that drove each change.</p>';
+
+  /* evolution */
+  const ev=(S.evolution||[]).slice().sort((a,b)=>a.round-b.round);
+  $("evo").innerHTML = ev.length? ev.slice().reverse().map(e=>{
+    const ch=(e.changes||[]).map(c=>'<li><b>'+esc(c.what)+'</b>'+(c.why?' <span class="muted">because '+esc(c.why)+'</span>':"")+((c.driven_by||[]).length?' <span class="muted mono">('+esc(c.driven_by.join(", "))+')</span>':"")+'</li>').join("");
+    const sec=[...(e.impersonated||[]),...(e.contaminated_inputs||[])];
+    return '<div class="evo-r"><div><div class="when">Round '+esc(e.round)+'</div><span class="pill '+esc(e.status)+'">'+esc(e.status)+'</span></div><div><blockquote>'+esc(e.house_view||"")+'</blockquote>'+(ch?'<ul>'+ch+'</ul>':"")+
+      (sec.length?'<p class="muted" style="font-size:.82rem">Set aside as forged or withdrawn: '+esc(sec.join(", "))+'</p>':"")+'</div></div>';
+  }).join("") : '<p class="empty">The story of the house view appears here round by round: what it says, what changed, and which desks moved it.</p>';
+  /* rounds */
+  $("rail").innerHTML = rs.length? rs.slice().reverse().map(r=>'<div class="round"><div class="top"><strong class="mono">Round '+r.round+'</strong><span class="pill '+esc(r.status)+'">'+esc(r.status)+'</span></div>'+
+      '<div class="kv"><span>delta '+esc(r.delta_vs_prev||"–")+'</span><span>open '+esc(r.open_contradictions??"–")+'</span><span>minds changed '+esc(r.stance_changes??"–")+'</span>'+(listOf(r.missing).length?'<span>missing '+esc(listOf(r.missing).join(", "))+'</span>':"")+'</div>'+
+      (r.rationale?'<p class="muted" style="font-size:.85rem">'+esc(r.rationale)+'</p>':"")+'</div>').join("")
+    : '<p class="empty">Rounds appear as the CIO publishes them.</p>';
+
+  /* under the hood */
+  const max=Math.max(1,...Object.values(d.matrix));
+  let h='<thead><tr><th></th>'+STORES.map(b=>'<th scope="col">'+esc(shortStore(b))+' storage</th>').join("")+'</tr></thead><tbody>';
+  for(const a of AGENTS){ h+='<tr><th scope="row">'+esc(agentLabel(a))+'</th>';
+    for(const b of STORES){ const k=a+"|"+b, n=d.matrix[k]||0;
+      const st = n? 'style="background:color-mix(in srgb, var(--accent) '+Math.round(12+70*n/max)+'%, transparent)"' : "";
+      h+='<td class="'+(d.forgedCells[k]?"forged":"")+'" '+st+'>'+(n||"")+'</td>'; }
+    h+='</tr>'; }
+  $("heat").innerHTML=h+'</tbody>';
+  $("feed").innerHTML = d.feed.slice(-150).reverse().map(r=>{ const g=r.gw;
+    const rt=r.be.map(b=>shortStore(b.bucket)+" "+b.statusCode).join(" · ");
+    return '<div class="ev"><span>'+hhmmss(g.time)+'</span><span class="who">'+esc(agentLabel(g.bucket))+'</span><span class="op">'+esc((g.action||"").replace(/^s3:/,""))+'</span><span class="k">'+esc(g.key||"(listing)")+'</span><span>'+esc(g.statusCode)+'</span>'+(rt?'<span class="rt">→ '+esc(rt)+'</span>':"")+'</div>';
+  }).join("") || '<p class="note">No calls yet.</p>';
+  $("diagText").textContent = "Data: "+DATA+" · ok "+D.dataOk+" · failed "+D.dataFail+"\nEvents: "+EVENTS+" · ok "+D.synOk+" · failed "+D.synFail+
+    "\nRun "+JSON.stringify(S.run)+(S.pinned?" (pinned)":"")+" · events since "+(S.since||"–")+" · "+S.events.size+" events · "+d.calls+" calls · "+d.bytes+" bytes"+
+    (D.lastErrors.length? "\n\nRecent errors:\n- "+D.lastErrors.join("\n- ") : "");
+}
+$("brClose").addEventListener("click",()=>{ $("breaking").hidden=true; });
+function setStatus(kind,html){ const b=$("status"); b.className="status "+(kind||""); b.innerHTML=html; }
+
+/* ---------- platform events ---------- */
+function ingest(list){
+  let n=0;
+  for(const e of (list||[])){
+    if(!e || !e.eventId || S.events.has(e.eventId)) continue;
+    if(S.since && e.time && e.time < S.since) continue;
+    S.events.set(e.eventId,e); n++;
+    let r=S.reqs.get(e.reqId); if(!r){ r={gw:null,be:[]}; S.reqs.set(e.reqId,r); }
+    if(e.layer==="gateway" || (!e.layer && !e.endpoint)) r.gw=e; else r.be.push(e);
+  }
+  if(n) queueRender();
+}
+async function loadHistory(gen){
+  let cursor=null, pages=0;
+  while(pages<60 && gen===S.gen){
+    const input={since:S.since, limit:100}; if(cursor) input.cursor=cursor;
+    const p=await syn("list_events",input); pages++;
+    if(gen!==S.gen) return;
+    ingest(p && p.events);
+    cursor = p && p.nextCursor; if(!cursor || !(p.events||[]).length) break;
+  }
+}
+async function tailLoop(gen){
+  while(gen===S.gen){
+    try{
+      const input={limit:100, waitSeconds:8}; if(S.cursor) input.cursor=S.cursor;
+      const p=await syn("tail_events",input);
+      if(gen!==S.gen) return;
+      if(p && p.nextCursor) S.cursor=p.nextCursor;
+      ingest(p && p.events);
+    }catch(e){ noteErr("tail_events",e); await new Promise(r=>setTimeout(r,4000)); }
+  }
+}
+
+/* ---------- the CIO's folder and the desks' reports ---------- */
+const seen=new Map();
+async function readPointer(){ return getJSON("cio-data-rw","cio/current_run.json"); }
+async function discoverRuns(){
+  const found=new Set();
+  try{ const p=await data("list",{bucket:"cio-data-rw",prefix:"cio/runs/",delimiter:"/"});
+    (p&&p.prefixes||[]).forEach(x=>{ const v=typeof x==="string"?x:(x&&(x.prefix||x.Prefix)); if(v) found.add(v.replace(/^cio\//,"")); }); }catch(e){ noteErr("discover runs",e); }
+  const cur=S.pointer&&S.pointer.run; if(cur) found.add(cur);
+  if(S.knownRuns===null) S.knownRuns=new Set(found); else for(const r of found) if(!S.knownRuns.has(r)){ S.knownRuns.add(r); if(r!==S.run) S.newRuns.add(r); }
+  S.runList=[...found].sort().reverse(); renderRuns();
+}
+function renderRuns(){
+  const box=$("runs"), cur=S.pointer&&S.pointer.run;
+  if(S.runList.length<2 && !(S.pinned && cur && cur!==S.run)){ box.hidden=true; return; } box.hidden=false;
+  let h='<span class="muted">Runs:</span>'+S.runList.map(r=>'<button type="button" data-run="'+esc(r)+'" class="'+(r===S.run?"on":"")+'">'+esc(r)+(r===cur?'<em class="tag">current</em>':"")+(S.newRuns.has(r)?'<em class="tag">new</em>':"")+'</button>').join("");
+  if(S.pinned && cur && cur!==S.run) h+='<button type="button" data-follow="1">Follow current run</button>';
+  box.innerHTML=h;
+}
+$("runs").addEventListener("click",ev=>{
+  const b=ev.target.closest("button"); if(!b) return;
+  const cur=S.pointer&&S.pointer.run, r=b.dataset.follow? cur : b.dataset.run; if(!r) return;
+  S.newRuns.delete(r); S.pinned = r!==cur; start(r);
+});
+$("run").addEventListener("input",()=>{ S.manual=true; });
+
+async function readTheses(gen){
+  /* The CIO's merged view: one listing shows every desk's reports. Read each desk's newest one when it changes. */
+  let token=null, objs=[], pages=0;
+  do{ const q={bucket:"cio-data-rw",prefix:"user-"}; if(token) q.continuation_token=token;
+      const p=await data("list",q); objs=objs.concat((p&&p.objects)||[]); token=p&&p.is_truncated? (p.next_token||p.continuation_token||p.next_continuation_token) : null; pages++; }
+  while(token && pages<5 && gen===S.gen);
+  const latest={};
+  for(const o of objs){ const m=/^user-(\d\d)\/(.*)thesis_r(\d\d)\.md$/.exec(o.key); if(!m || m[2]!==S.run) continue;
+    if(!latest[m[1]] || +m[3]>+latest[m[1]].r) latest[m[1]]={r:m[3], o}; }
+  for(const s of Object.keys(latest)){
+    const {r,o}=latest[s], sig=o.key+"#"+o.size;
+    if(seen.get("t"+s)===sig) continue;
+    try{ const md=await getText("cio-data-rw",o.key); const h=parseHeader(md);
+      const t=S.theses[s]||{history:[]};
+      const entry={round:+r, stance:h.stance, conviction:h.conviction};
+      t.history=t.history.filter(x=>x.round!==+r).concat([entry]).sort((a,b)=>a.round-b.round);
+      Object.assign(t,{round:+r, stance:h.stance, conviction:h.conviction, change:h.changed_since_prev, top_risk:h.top_risk, answers:(h.answers&&!/^(none|n\/a)\b/i.test(h.answers.trim()))? h.answers : null});
+      S.theses[s]=t; seen.set("t"+s,sig);
+    }catch(e){ noteErr("thesis "+s,e); }
+  }
+}
+async function pollData(){
+  if(dataBusy || !mcp) return; dataBusy=true; const gen=S.gen;
+  try{
+    try{ const p=await readPointer(); S.pointer=p;
+      if(!S.pinned && p && p.run && p.run!==S.run){ dataBusy=false; start(p.run); return; } }
+    catch(e){ noteErr("current_run.json",e); }
+    if((++D.polls)%4===1) await discoverRuns();
+    if(!S.run){ setStatus("err","No current run yet: the presenter prompt creates <span class=\"mono\">cio/current_run.json</span>."); return; }
+    const base="cio/"+S.run;
+    const p=await data("list",{bucket:"cio-data-rw",prefix:base});
+    if(gen!==S.gen) return;
+    const objs=(p&&p.objects)||[];
+    for(const o of objs){
+      const k=o.key.slice(base.length), sig=o.key+"#"+o.size;
+      if(/^rounds\/round_\d+\.md$/.test(k) && seen.get(o.key)!==sig){
+        const md=await getText("cio-data-rw",o.key); const h=parseHeader(md), r=+h.round;
+        if(r){ S.rounds.set(r,Object.assign({},h,{round:r})); S.roundBodies.set(r,parseMacro(md)); seen.set(o.key,sig); }
+      } else if(k==="evolution.json" && seen.get(o.key)!==sig){
+        try{ const a=await getJSON("cio-data-rw",o.key); if(Array.isArray(a)) S.evolution=a; seen.set(o.key,sig); }catch(e){ noteErr("evolution.json",e); }
+      } else if(k==="CONVERGED.md" && !S.converged){ S.converged=true; S.convergedAt=Date.parse(o.last_modified||"")||Date.now(); }
+    }
+    if(objs.some(o=>o.key===base+"desk.json")){ try{ S.desk=await getJSON("cio-data-rw",base+"desk.json"); }catch(e){ noteErr("desk.json",e); } }
+    await readTheses(gen);
+    if(gen!==S.gen) return;
+    setStatus("","Following "+esc(S.run)+(S.pinned?" (pinned)":"")+" · updated "+new Date().toLocaleTimeString()+(S.converged?" · consensus reached":""));
+    queueRender();
+  }catch(e){ noteErr("poll",e); setStatus("err","Can't read the CIO's bucket through "+esc(DATA)+". Check that connector is signed in as the CIO Agent; details are under the hood."); }
+  finally{ dataBusy=false; }
+}
+
+async function start(run){
+  S.gen++; const gen=S.gen;
+  S.run=run||""; if(S.run && !S.run.endsWith("/")) S.run+="/"; $("run").value=S.run;
+  S.example=false; S.rounds.clear(); S.roundBodies.clear(); seen.clear(); S.desk=null; S.evolution=[]; S.theses={}; S.converged=false; S.convergedAt=null;
+  S.events.clear(); S.reqs.clear(); S.cursor=null; S.breakingShown=false; S.containedShown=false; $("breaking").hidden=true;
+  $("soundbite").textContent="The committee is gathering"; $("take").textContent="The CIO posts a short read on the room when each round closes and again when it publishes.";
+  S.newRuns.delete(S.run);
+  $("connect").hidden=true; $("stop").hidden=false; renderRuns(); render();
+  if(!mcp){ setStatus("err","This view can't reach the OneBucket connectors. Open the page in claude.ai with "+esc(DATA)+" and "+esc(EVENTS)+" connected."); return; }
+  setStatus("","Connecting…");
+  try{ if(!S.pointer || S.pointer.run!==S.run){ const p=await readPointer(); if(p && p.run===S.run) S.pointer=p; } }catch(e){}
+  const st = S.pointer && S.pointer.run===S.run && S.pointer.started_at ? Date.parse(S.pointer.started_at) : NaN;
+  S.since = new Date((isNaN(st)? Date.now()-90*60000 : st-60000)).toISOString();
+  clearInterval(dataTimer); dataTimer=setInterval(pollData,8000); pollData();
+  try{ const t=await syn("tail_events",{waitSeconds:0,limit:1}); if(t&&t.nextCursor) S.cursor=t.nextCursor; ingest(t&&t.events); }catch(e){ noteErr("tail start",e); }
+  loadHistory(gen).catch(e=>noteErr("list_events",e));
+  tailLoop(gen);
+}
+function stop(){ S.gen++; clearInterval(dataTimer); dataTimer=null; $("connect").hidden=false; $("stop").hidden=true; setStatus("","Stopped. What was loaded stays on screen."); }
+$("connect").addEventListener("click",()=>{ const v=$("run").value.trim(); S.pinned = S.manual && !!v; S.manual=false; start(v || (S.pointer&&S.pointer.run) || ""); });
+$("stop").addEventListener("click",stop);
+try{ const b=localStorage.getItem("ccr.baseline"); if(b) $("baseline").value=b; }catch(e){}
+$("epData").value=DATA; $("epEvents").value=EVENTS;
+$("epSave").addEventListener("click",()=>{
+  const d=$("epData").value.trim()||DEFAULT_DATA, e=$("epEvents").value.trim()||DEFAULT_EVENTS;
+  try{ localStorage.setItem("ccr.data",d); localStorage.setItem("ccr.events",e); }catch(err){}
+  location.reload();
+});
+$("baseline").addEventListener("input",()=>{ try{ localStorage.setItem("ccr.baseline",$("baseline").value); }catch(e){} queueRender(); });
+setInterval(()=>{ if(!S.example && !S.converged) queueRender(); },1000);
+
+/* ---------- illustrative example (invented; replaced by any real run) ---------- */
+function example(){
+  const t0=Date.parse("2026-10-01T15:00:00Z");
+  S.run="runs/example/"; S.pointer={run:S.run,status:"CONVERGING",round:2,expected:10,live_seats:["01","02","03"],sim_seats:["04","05","06","07","08","09","10"],started_at:new Date(t0).toISOString()};
+  S.convergedAt=t0+7*60000+40000;
+  const desks=[["01","overweight","high","medium","Trimmed AI accelerators ~3pp to respect the house cap"],["02","neutral","medium","medium","Added GLP-1 exposure as ballast"],
+    ["03","overweight","high","medium","Moved to 1 cut; narrowed to money-centre banks"],["04","overweight","high","medium-high","Adopted house macro; tilted to gas"],
+    ["05","underweight","high","medium-high","Kept underweight on consumer-credit evidence"],["06","overweight","medium","medium","No change: confirm"],
+    ["07","overweight","medium-high","medium","Grid backlog intact; data-centre names to neutral"],["08","overweight","high","medium","Rebuilt thesis on NOI growth, not rate cuts"],
+    ["09","overweight","medium-high","medium","Dropped the bond-proxy leg"],["10","neutral","medium","medium","Macro to house; still long copper"]];
+  desks.forEach(([s,st,c1,c2,ch])=>{ S.theses[s]={round:2,stance:st,conviction:c2,change:ch,history:[{round:1,stance:st,conviction:c1},{round:2,stance:st,conviction:c2}]}; });
+  S.theses["05"].answers="Q: Will delinquencies keep rising through next year? A (room): likely, student-loan repayments only just restarted.";
+  S.theses["08"].answers="Q: Can REITs grow earnings with only one cut? A: possible, rents are still rising faster than costs.";
+  S.rounds.set(1,{round:1,status:"CONVERGING",delta_vs_prev:"n/a",open_contradictions:4,stance_changes:0,rationale:"Illustrative: the desks start far apart on cuts, inflation and recession odds."});
+  S.rounds.set(2,{round:2,status:"CONVERGING",delta_vs_prev:"material",open_contradictions:1,stance_changes:2,rationale:"Illustrative: every desk took the house macro; one fight left over AI concentration."});
+  S.roundBodies.set(1,{"Rate cuts (12m)":"1","Core inflation":"2.9%","Recession odds":"25%"});
+  S.roundBodies.set(2,{"Rate cuts (12m)":"1","Core inflation":"2.8%","Recession odds":"25%"});
+  S.desk={round:2,phase:"published",updated_at:new Date(t0+7*60000).toISOString(),headline:"Example: the bulls blink, and the house caps AI at 35%",take:"Illustrative only. Ten desks walked in with ten different rate paths and walked out on one. Real Estate rebuilt its whole case without rate cuts, Tech gave up three points to the cap, and the only fight left is how much of this book really rides on one AI build-out."};
+  S.evolution=[{round:1,status:"CONVERGING",house_view:"Illustrative: the desks start far apart. The house sets one cut, 2.9% core inflation and 25% recession odds.",changes:[]},
+    {round:2,status:"CONVERGING",house_view:"Illustrative: modestly pro-risk with defensive ballast; AI-linked exposure capped at 35%.",changes:[{what:"Capped AI-linked exposure at 35%",why:"six desks leaned on the same build-out",driven_by:["user-01","user-07","user-09"]},{what:"Real Estate's case no longer depends on cuts",why:"it rebuilt on rental growth",driven_by:["user-08"]}],credited_answers:[{analyst:"user-05",answer:"likely: repayments restarted",effect:"kept recession odds at 25%"},{analyst:"user-08",answer:"possible: rents outpacing costs",effect:"REIT overweight survives one cut"}]}];
+  render();
+}
+example();
+$("run").value="";
+
+/* Follow the presenter's current run once the connectors answer. */
+(async()=>{
+  try{
+    const m = window.claude && window.claude.use ? await window.claude.use("mcp") : null;
+    if(!m) return; mcp=m;
+    const p=await readPointer(); S.pointer=p;
+    if(p && p.run){ start(p.run); } else setStatus("err","Connected, but there's no current run yet. Start one with the presenter prompt.");
+    discoverRuns();
+  }catch(e){ noteErr("auto-follow",e); setStatus("err","Connected, but couldn't read cio/current_run.json. Details are under the hood."); }
+})();
+})();
+</script>
+</body>
+</html>

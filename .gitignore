@@ -1,0 +1,45 @@
+# >>> agent-workflow-template: agentic scaffolding (local only, not project source) >>>
+# Agent workflow scaffolding + its working docs: present locally, never published.
+/CLAUDE.md
+/CLAUDE.devteam.md
+/GEMINI.md
+/AGENTS.md
+/setup.sh
+/.claude/
+/.agents/
+/.skills/
+/.cto/
+/.cto-path
+/.cto-path.example
+/.review-engine
+/.review-engine-fallback
+/scripts/agentic/
+/scripts/cto/
+/docs/personas/
+/docs/sprints/
+/docs/roadmap/
+/docs/backlog/
+/docs/ideation/
+/docs/initiatives/
+/docs/memos/
+/docs/architecture/decisions/_templates/
+/tmp/
+.DS_Store
+# <<< agent-workflow-template: end <<<
+
+# Project specific ignores
+.env
+.env.*
+*.pem
+.aws/
+*credentials*.csv
+__pycache__/
+*.pyc
+.pytest_cache/
+.claude/current-session.id
+.claude/CRASHED
+.claude/COMPLETE
+.claude/pending-prompt.md
+.claude/used-prompts/
+.claude/session.log
+.claude/terminal-window.id
